@@ -23,7 +23,7 @@ type Page struct {
 type User struct {
 	ID       int    `db:"id" identity:"true" unique:"true"`
 	Username string `db:"username"`
-	Password []byte `db:"password"`
+	Password string `db:"password"`
 }
 
 type Session struct {
@@ -146,7 +146,7 @@ func main() {
 			http.Error(rw, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
-		if bcrypt.CompareHashAndPassword(u.Password, []byte(password)) != nil {
+		if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) != nil {
 			http.Error(rw, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}

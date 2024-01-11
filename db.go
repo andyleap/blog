@@ -104,7 +104,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			}
 			cols = append(cols, col)
 		}
-		create := fmt.Sprintf("CREATE TABLE %s (", name) + strings.Join(cols, ", ") + ")"
+		create := fmt.Sprintf("CREATE TABLE \"%s\" (", name) + strings.Join(cols, ", ") + ")"
 		_, err := db.Exec(create)
 		if err != nil {
 			return fmt.Errorf("error creating table %w: %s", err, create)
@@ -113,7 +113,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 		actions := []string{}
 		for columnName, ci := range desired {
 			if _, ok := existing[columnName]; !ok {
-				action := fmt.Sprintf("ADD COLUMN '%s' %s", columnName, ci.typ)
+				action := fmt.Sprintf("ADD COLUMN \"%s\" %s", columnName, ci.typ)
 				if ci.identity {
 					action += " GENERATED ALWAYS AS IDENTITY"
 				}
@@ -122,23 +122,23 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			}
 			e := existing[columnName]
 			if e.typ != ci.typ {
-				actions = append(actions, fmt.Sprintf("ALTER COLUMN '%s' TYPE %s", columnName, ci.typ))
+				actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" TYPE %s", columnName, ci.typ))
 			}
 			if e.identity != ci.identity {
 				if ci.identity {
-					actions = append(actions, fmt.Sprintf("ALTER COLUMN '%s' ADD GENERATED ALWAYS AS IDENTITY", columnName))
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" ADD GENERATED ALWAYS AS IDENTITY", columnName))
 				} else {
-					actions = append(actions, fmt.Sprintf("ALTER COLUMN '%s' DROP IDENTITY", columnName))
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" DROP IDENTITY", columnName))
 				}
 			}
 		}
 		for columnName, _ := range existing {
 			if _, ok := desired[columnName]; !ok {
-				actions = append(actions, fmt.Sprintf("DROP COLUMN '%s'", columnName))
+				actions = append(actions, fmt.Sprintf("DROP COLUMN \"%s\"", columnName))
 			}
 		}
 		if len(actions) > 0 {
-			alter := fmt.Sprintf("ALTER TABLE '%s' ", name) + strings.Join(actions, ", ")
+			alter := fmt.Sprintf("ALTER TABLE \"%s\" ", name) + strings.Join(actions, ", ")
 			_, err := db.Exec(alter)
 			if err != nil {
 				return err
@@ -202,7 +202,7 @@ func (a *AutoMigrate) removeRefConstraints(db *sqlx.DB, name string, table inter
 			refTable: referencedTableName,
 			refCol:   referencedColumnName,
 		}
-		constraints[ri] = fmt.Sprintf("DROP CONSTRAINT %s", constraintName)
+		constraints[ri] = fmt.Sprintf("DROP CONSTRAINT \"%s\"", constraintName)
 	}
 	rv := reflect.ValueOf(table).Type()
 	for i := 0; i < rv.NumField(); i++ {
@@ -229,7 +229,7 @@ func (a *AutoMigrate) removeRefConstraints(db *sqlx.DB, name string, table inter
 		actions = append(actions, drop)
 	}
 	if len(actions) > 0 {
-		alter := fmt.Sprintf("ALTER TABLE %s ", name) + strings.Join(actions, ", ")
+		alter := fmt.Sprintf("ALTER TABLE \"%s\" ", name) + strings.Join(actions, ", ")
 		_, err := db.Exec(alter)
 		if err != nil {
 			return err
@@ -282,10 +282,10 @@ func (a *AutoMigrate) addRefConstraints(db *sqlx.DB, name string, table interfac
 
 	actions := []string{}
 	for ri := range constraints {
-		actions = append(actions, fmt.Sprintf("ADD FOREIGN KEY (%s) REFERENCES %s (%s)", ri.col, ri.refTable, ri.refCol))
+		actions = append(actions, fmt.Sprintf("ADD FOREIGN KEY (\"%s\") REFERENCES \"%s\" (\"%s\")", ri.col, ri.refTable, ri.refCol))
 	}
 	if len(actions) > 0 {
-		alter := fmt.Sprintf("ALTER TABLE %s ", name) + strings.Join(actions, ", ")
+		alter := fmt.Sprintf("ALTER TABLE \"%s\" ", name) + strings.Join(actions, ", ")
 		_, err := db.Exec(alter)
 		if err != nil {
 			return err

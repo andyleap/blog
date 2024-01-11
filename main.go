@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log"
@@ -152,14 +153,15 @@ func main() {
 		}
 		id := make([]byte, 32)
 		rand.Read(id)
+		sid := hex.EncodeToString(id)
 		s := Session{
-			ID:     string(id),
+			ID:     sid,
 			UserID: u.ID,
 		}
 		w.db.Exec("INSERT INTO session (id, user_id) VALUES ($1, $2)", s.ID, s.UserID)
 		http.SetCookie(rw, &http.Cookie{
 			Name:   "session",
-			Value:  string(id),
+			Value:  sid,
 			MaxAge: 86400,
 		})
 	})

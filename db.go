@@ -56,14 +56,13 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	defer rows.Close()
 	existing := map[string]colinfo{}
 	for rows.Next() {
-		var columnName, dataType string
-		var isIdentity bool
+		var columnName, dataType, isIdentity string
 		if err := rows.Scan(&columnName, &dataType, &isIdentity); err != nil {
 			return err
 		}
 		existing[columnName] = colinfo{
 			typ:      dataType,
-			identity: isIdentity,
+			identity: isIdentity == "YES",
 		}
 	}
 	desired := map[string]colinfo{}

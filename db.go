@@ -157,10 +157,10 @@ type refinfo struct {
 
 var refConstraintQuery = `
 select
-	conname
+	conname,
 	att2.attname as "col", 
 	cl.relname as "ref_table", 
-	att.attname as "ref_col",
+	att.attname as "ref_col"
 from
    (select 
         unnest(con1.conkey) as "parent", 

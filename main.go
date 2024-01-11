@@ -125,6 +125,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		rw.Header().Set("Content-Type", "text/html")
 		err = t.Execute(rw, data)
 		if err != nil {
 			panic(err)

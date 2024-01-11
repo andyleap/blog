@@ -36,9 +36,11 @@ func (a *AutoMigrate) Migrate(db *sqlx.DB) error {
 }
 
 type colinfo struct {
-	typ      string
-	rel      string
-	identity bool
+	typ       string
+	rel       string
+	identity  bool
+	unique    bool
+	uniqueCon string
 }
 
 func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) error {
@@ -65,6 +67,33 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			identity: isIdentity == "YES",
 		}
 	}
+	rows, err = db.Query(`SELECT conname, conkey, attname
+	FROM pg_constraint con
+	join pg_attribute att on
+		   att.attrelid = con.conrelid and att.attnum = con.conkey[1]
+	WHERE conrelid =
+		(SELECT oid 
+		FROM pg_class
+		WHERE relname = $1) and contype = 'u'`, name)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var conname, attname string
+		var conkey []int
+		if err := rows.Scan(&conname, &conkey, &attname); err != nil {
+			return err
+		}
+		if len(conkey) != 1 {
+			return fmt.Errorf("unexpected number of columns in unique constraint %s", conname)
+		}
+		if ci, ok := existing[attname]; ok {
+			ci.unique = true
+			ci.uniqueCon = conname
+			existing[attname] = ci
+		}
+	}
 	desired := map[string]colinfo{}
 	rv := reflect.ValueOf(table).Type()
 	for i := 0; i < rv.NumField(); i++ {
@@ -76,6 +105,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 		dataType := ""
 		ci := colinfo{
 			identity: field.Tag.Get("identity") == "true",
+			unique:   field.Tag.Get("unique") == "true",
 		}
 		switch field.Type.Kind() {
 		case reflect.Int:
@@ -102,6 +132,9 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			if ci.identity {
 				col += " GENERATED ALWAYS AS IDENTITY"
 			}
+			if ci.unique {
+				col += " UNIQUE"
+			}
 			cols = append(cols, col)
 		}
 		create := fmt.Sprintf("CREATE TABLE \"%s\" (", name) + strings.Join(cols, ", ") + ")"
@@ -117,6 +150,9 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 				if ci.identity {
 					action += " GENERATED ALWAYS AS IDENTITY"
 				}
+				if ci.unique {
+					action += " UNIQUE"
+				}
 				actions = append(actions, action)
 				continue
 			}
@@ -129,6 +165,13 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 					actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" ADD GENERATED ALWAYS AS IDENTITY", columnName))
 				} else {
 					actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" DROP IDENTITY", columnName))
+				}
+			}
+			if e.unique != ci.unique {
+				if ci.unique {
+					actions = append(actions, fmt.Sprintf("ADD UNIQUE (\"%s\")", columnName))
+				} else {
+					actions = append(actions, fmt.Sprintf("DROP CONSTRAINT \"%s\"", ci.uniqueCon))
 				}
 			}
 		}

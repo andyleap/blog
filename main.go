@@ -21,7 +21,7 @@ type Page struct {
 }
 
 type User struct {
-	ID       int    `db:"id" identity:"true"`
+	ID       int    `db:"id" identity:"true" unique:"true"`
 	Username string `db:"username"`
 	Password []byte `db:"password"`
 }

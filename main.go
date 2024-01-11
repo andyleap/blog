@@ -96,13 +96,14 @@ func main() {
 	c.WikiLink = w
 
 	templateFuncs := template.FuncMap{
-		"render": func(path string) (string, error) {
+		"render": func(path string) (template.HTML, error) {
 			var page Page
 			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return fmt.Sprintf("%q not found", path), nil
+				return template.HTML(fmt.Sprintf("%q not found", path)), nil
 			}
-			return c.Transform(page.Content)
+			out, err := c.Transform(page.Content)
+			return template.HTML(out), err
 		},
 		"getRaw": func(path string) (string, error) {
 			var page Page
@@ -215,8 +216,61 @@ func main() {
 		http.Redirect(rw, req, "/"+req.PathValue("page"), http.StatusFound)
 	})
 
+	http.HandleFunc("GET /template/edit/{name}", func(rw http.ResponseWriter, req *http.Request) {
+		s := getSession(req)
+		if s == nil {
+			http.Redirect(rw, req, "/login", http.StatusFound)
+			return
+		}
+		var tmpl Template
+		w.db.Get(&tmpl, "SELECT * FROM template WHERE name = $1", req.PathValue("name"))
+		t, err := template.New("").Funcs(templateFuncs).Parse(simpleEdit)
+		if err != nil {
+			panic(err)
+		}
+		err = t.Execute(rw, struct {
+			Page    string
+			Content template.HTML
+		}{
+			req.PathValue("name"),
+			template.HTML(tmpl.Content),
+		})
+		if err != nil {
+			panic(err)
+		}
+	})
+
+	http.HandleFunc("POST /template/edit/{name}", func(rw http.ResponseWriter, req *http.Request) {
+		s := getSession(req)
+		if s == nil {
+			http.Redirect(rw, req, "/login", http.StatusFound)
+			return
+		}
+		content := req.FormValue("content")
+		_, err := w.db.Exec("INSERT INTO template (name, content) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET content = $2", req.PathValue("name"), content)
+		if err != nil {
+			panic(err)
+		}
+		http.Redirect(rw, req, "/template/edit/"+req.PathValue("name"), http.StatusFound)
+	})
+
 	http.ListenAndServe(":8080", nil)
 }
+
+var simpleEdit = `
+<!DOCTYPE html>
+<html>
+<head>
+	<title>{{.Page}}</title>
+</head>
+<body>
+	<form method="POST">
+		<textarea name="content" style="width: 100%; height: 100%">{{.Content}}</textarea>
+		<input type="submit" value="Save">
+	</form>
+</body>
+</html>
+`
 
 func (w *wiki) WikiLink(href string, text string) string {
 	err := w.db.Get(&Page{}, "SELECT 1 FROM page WHERE slug = $1", href)

@@ -182,7 +182,7 @@ func (a *AutoMigrate) removeRefConstraints(db *sqlx.DB, name string, table inter
 			refTable: referencedTableName,
 			refCol:   referencedColumnName,
 		}
-		constraints[ri] = fmt.Sprintf("DROP CONSTRAINT %s", name, constraintName)
+		constraints[ri] = fmt.Sprintf("DROP CONSTRAINT %s", constraintName)
 	}
 	rv := reflect.ValueOf(table).Type()
 	for i := 0; i < rv.NumField(); i++ {
@@ -201,9 +201,7 @@ func (a *AutoMigrate) removeRefConstraints(db *sqlx.DB, name string, table inter
 				refTable: parts[0],
 				refCol:   parts[1],
 			}
-			if _, ok := constraints[ri]; ok {
-				delete(constraints, ri)
-			}
+			delete(constraints, ri)
 		}
 	}
 	actions := []string{}
@@ -268,9 +266,7 @@ func (a *AutoMigrate) addRefConstraints(db *sqlx.DB, name string, table interfac
 			refTable: referencedTableName,
 			refCol:   referencedColumnName,
 		}
-		if _, ok := constraints[ri]; ok {
-			delete(constraints, ri)
-		}
+		delete(constraints, ri)
 	}
 
 	actions := []string{}

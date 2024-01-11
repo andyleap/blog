@@ -173,7 +173,7 @@ from
         join pg_namespace ns on cl.relnamespace = ns.oid
         join pg_constraint con1 on con1.conrelid = cl.oid
     where
-        cl.relname = '%s'
+        cl.relname = $1
         and ns.nspname = 'public'
         and con1.contype = 'f'
    ) con

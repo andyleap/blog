@@ -141,7 +141,7 @@ func main() {
 		password := req.FormValue("password")
 
 		var u User
-		err := w.db.Get(&u, "SELECT * FROM user WHERE username = $1", username)
+		err := w.db.Get(&u, `SELECT * FROM "user" WHERE "username" = $1`, username)
 		if err != nil {
 			http.Error(rw, "Invalid username or password", http.StatusUnauthorized)
 			return

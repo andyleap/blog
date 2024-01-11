@@ -17,7 +17,7 @@ import (
 )
 
 type Page struct {
-	Slug    string `db:"slug"`
+	Slug    string `db:"slug" unique:"true"`
 	Content string `db:"content"`
 }
 
@@ -33,7 +33,7 @@ type Session struct {
 }
 
 type Template struct {
-	Name    string `db:"name"`
+	Name    string `db:"name" unique:"true"`
 	Content string `db:"content"`
 }
 

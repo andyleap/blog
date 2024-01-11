@@ -19,17 +19,17 @@ func (a *AutoMigrate) AddTable(name string, table interface{}) {
 func (a *AutoMigrate) Migrate(db *sqlx.DB) error {
 	for name, table := range a.Tables {
 		if err := a.removeRefConstraints(db, name, table); err != nil {
-			return err
+			return fmt.Errorf("error removing ref constraints for %s: %s", name, err)
 		}
 	}
 	for name, table := range a.Tables {
 		if err := a.migrateTable(db, name, table); err != nil {
-			return err
+			return fmt.Errorf("error migrating %s: %s", name, err)
 		}
 	}
 	for name, table := range a.Tables {
 		if err := a.addRefConstraints(db, name, table); err != nil {
-			return err
+			return fmt.Errorf("error adding ref constraints for %s: %s", name, err)
 		}
 	}
 	return nil

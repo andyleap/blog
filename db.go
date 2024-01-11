@@ -155,18 +155,39 @@ type refinfo struct {
 	refCol   string
 }
 
+var refConstraintQuery = `
+select
+	conname
+	att2.attname as "col", 
+	cl.relname as "ref_table", 
+	att.attname as "ref_col",
+from
+   (select 
+        unnest(con1.conkey) as "parent", 
+        unnest(con1.confkey) as "child", 
+        con1.confrelid, 
+        con1.conrelid,
+        con1.conname
+    from 
+        pg_class cl
+        join pg_namespace ns on cl.relnamespace = ns.oid
+        join pg_constraint con1 on con1.conrelid = cl.oid
+    where
+        cl.relname = '%s'
+        and ns.nspname = 'public'
+        and con1.contype = 'f'
+   ) con
+   join pg_attribute att on
+       att.attrelid = con.confrelid and att.attnum = con.child
+   join pg_class cl on
+       cl.oid = con.confrelid
+   join pg_attribute att2 on
+       att2.attrelid = con.conrelid and att2.attnum = con.parent
+`
+
 // removeRefConstraints removes foreign key constraints from the table that don't exist in the struct
 func (a *AutoMigrate) removeRefConstraints(db *sqlx.DB, name string, table interface{}) error {
-	rows, err := db.Query(`SELECT
-		constraint_name,
-		column_name,
-		referenced_table_name,
-		referenced_column_name
-	 FROM
-		information_schema.key_column_usage
-	 WHERE
-		table_name = '$1' AND
-		referenced_table_name IS NOT NULL`, name)
+	rows, err := db.Query(refConstraintQuery, name)
 	if err != nil {
 		return err
 	}
@@ -242,16 +263,7 @@ func (a *AutoMigrate) addRefConstraints(db *sqlx.DB, name string, table interfac
 			constraints[ri] = struct{}{}
 		}
 	}
-	rows, err := db.Query(`SELECT
-		constraint_name,
-		column_name,
-		referenced_table_name,
-		referenced_column_name
-	 FROM
-		information_schema.key_column_usage
-	 WHERE
-		table_name = '$1' AND
-		referenced_table_name IS NOT NULL`, name)
+	rows, err := db.Query(refConstraintQuery, name)
 	if err != nil {
 		return err
 	}

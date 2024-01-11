@@ -98,7 +98,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	if len(existing) == 0 {
 		cols := []string{}
 		for columnName, ci := range desired {
-			col := fmt.Sprintf("'%s' %s", columnName, ci.typ)
+			col := fmt.Sprintf("\"%s\" %s", columnName, ci.typ)
 			if ci.identity {
 				col += " GENERATED ALWAYS AS IDENTITY"
 			}

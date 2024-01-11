@@ -100,17 +100,17 @@ func main() {
 			var page Page
 			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return c.Transform(page.Content)
+				return fmt.Sprintf("%q not found", path), nil
 			}
-			return fmt.Sprintf("%q not found", path), nil
+			return c.Transform(page.Content)
 		},
 		"getRaw": func(path string) (string, error) {
 			var page Page
 			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return string(page.Content), nil
+				return fmt.Sprintf("%q not found", path), nil
 			}
-			return fmt.Sprintf("%q not found", path), nil
+			return string(page.Content), nil
 		},
 	}
 

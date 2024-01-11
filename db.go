@@ -104,7 +104,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			}
 			cols = append(cols, col)
 		}
-		create := fmt.Sprintf("CREATE TABLE '%s' (", name) + strings.Join(cols, ", ") + ")"
+		create := fmt.Sprintf("CREATE TABLE %s (", name) + strings.Join(cols, ", ") + ")"
 		_, err := db.Exec(create)
 		if err != nil {
 			return fmt.Errorf("error creating table %w: %s", err, create)

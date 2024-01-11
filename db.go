@@ -67,7 +67,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			identity: isIdentity == "YES",
 		}
 	}
-	rows, err = db.Query(`SELECT conname, conkey, attname
+	rows, err = db.Query(`SELECT conname, array_length(conkey, 1), attname
 	FROM pg_constraint con
 	join pg_attribute att on
 		   att.attrelid = con.conrelid and att.attnum = con.conkey[1]
@@ -81,11 +81,11 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	defer rows.Close()
 	for rows.Next() {
 		var conname, attname string
-		var conkey []int
+		var conkey int
 		if err := rows.Scan(&conname, &conkey, &attname); err != nil {
 			return err
 		}
-		if len(conkey) != 1 {
+		if conkey != 1 {
 			return fmt.Errorf("unexpected number of columns in unique constraint %s", conname)
 		}
 		if ci, ok := existing[attname]; ok {

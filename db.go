@@ -98,13 +98,13 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	if len(existing) == 0 {
 		cols := []string{}
 		for columnName, ci := range desired {
-			col := fmt.Sprintf("%s %s", columnName, ci.typ)
+			col := fmt.Sprintf("'%s' %s", columnName, ci.typ)
 			if ci.identity {
 				col += " GENERATED ALWAYS AS IDENTITY"
 			}
 			cols = append(cols, col)
 		}
-		create := fmt.Sprintf("CREATE TABLE %s (", name) + strings.Join(cols, ", ") + ")"
+		create := fmt.Sprintf("CREATE TABLE '%s' (", name) + strings.Join(cols, ", ") + ")"
 		_, err := db.Exec(create)
 		if err != nil {
 			return err
@@ -113,7 +113,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 		actions := []string{}
 		for columnName, ci := range desired {
 			if _, ok := existing[columnName]; !ok {
-				action := fmt.Sprintf("ADD COLUMN %s %s", columnName, ci.typ)
+				action := fmt.Sprintf("ADD COLUMN '%s' %s", columnName, ci.typ)
 				if ci.identity {
 					action += " GENERATED ALWAYS AS IDENTITY"
 				}
@@ -122,23 +122,23 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			}
 			e := existing[columnName]
 			if e.typ != ci.typ {
-				actions = append(actions, fmt.Sprintf("ALTER COLUMN %s TYPE %s", columnName, ci.typ))
+				actions = append(actions, fmt.Sprintf("ALTER COLUMN '%s' TYPE %s", columnName, ci.typ))
 			}
 			if e.identity != ci.identity {
 				if ci.identity {
-					actions = append(actions, fmt.Sprintf("ALTER COLUMN %s ADD GENERATED ALWAYS AS IDENTITY", columnName))
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN '%s' ADD GENERATED ALWAYS AS IDENTITY", columnName))
 				} else {
-					actions = append(actions, fmt.Sprintf("ALTER COLUMN %s DROP IDENTITY", columnName))
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN '%s' DROP IDENTITY", columnName))
 				}
 			}
 		}
 		for columnName, _ := range existing {
 			if _, ok := desired[columnName]; !ok {
-				actions = append(actions, fmt.Sprintf("DROP COLUMN %s", columnName))
+				actions = append(actions, fmt.Sprintf("DROP COLUMN '%s'", columnName))
 			}
 		}
 		if len(actions) > 0 {
-			alter := fmt.Sprintf("ALTER TABLE %s ", name) + strings.Join(actions, ", ")
+			alter := fmt.Sprintf("ALTER TABLE '%s' ", name) + strings.Join(actions, ", ")
 			_, err := db.Exec(alter)
 			if err != nil {
 				return err

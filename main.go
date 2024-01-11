@@ -2,38 +2,55 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/json"
+	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"net/http"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/andyleap/cajun"
-	"github.com/go-webauthn/webauthn/webauthn"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jhunt/go-s3"
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
 )
 
+type Page struct {
+	Slug    string `db:"slug"`
+	Content string `db:"content"`
+}
+
+type User struct {
+	ID       int    `db:"id" identity:"true"`
+	Username string `db:"username"`
+	Password []byte `db:"password"`
+}
+
+type Session struct {
+	ID     string `db:"id"`
+	UserID int    `db:"user_id" relation:"user.id"`
+}
+
+type Template struct {
+	Name    string `db:"name"`
+	Content string `db:"content"`
+}
+
+var am = &AutoMigrate{
+	Tables: map[string]interface{}{},
+}
+
+func init() {
+	am.AddTable("page", Page{})
+	am.AddTable("user", User{})
+	am.AddTable("session", Session{})
+	am.AddTable("template", Template{})
+}
+
 type wiki struct {
 	client *s3.Client
+	db     *sqlx.DB
 }
-
-type user struct {
-	Password []byte
-	Role     string
-}
-
-type session struct {
-	username string
-	role     string
-	ttl      time.Time
-}
-
-var sessions = map[string]*session{}
-var sessionMu = sync.Mutex{}
 
 func main() {
 	key, ok := os.LookupEnv("S3_KEY")
@@ -60,72 +77,84 @@ func main() {
 		Bucket:          bucket,
 		UsePathBuckets:  true,
 	})
-	webauthn.New(&webauthn.Config{})
 
-	w := &wiki{client: client}
+	db, err := sqlx.Connect("pgx", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w := &wiki{
+		client: client,
+		db:     db,
+	}
+
+	if err := am.Migrate(db); err != nil {
+		log.Fatal(err)
+	}
 
 	c := cajun.New()
 	c.WikiLink = w
 
 	templateFuncs := template.FuncMap{
 		"render": func(path string) (string, error) {
-			data, err := client.Get(path)
+			var page Page
+			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return "", err
+				return c.Transform(page.Content)
 			}
-			raw, err := io.ReadAll(data)
+			return fmt.Sprintf("%q not found", path), nil
+		},
+		"getRaw": func(path string) (string, error) {
+			var page Page
+			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return "", err
+				return string(page.Content), nil
 			}
-
-			return string(raw), nil
+			return fmt.Sprintf("%q not found", path), nil
 		},
 	}
 
+	runTemplate := func(name string, rw http.ResponseWriter, data interface{}) {
+		var tmpl Template
+		err := w.db.Get(&tmpl, "SELECT * FROM template WHERE name = $1", name)
+		if err != nil {
+			panic(err)
+		}
+		t, err := template.New("").Funcs(templateFuncs).Parse(tmpl.Content)
+		if err != nil {
+			panic(err)
+		}
+		err = t.Execute(rw, data)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	http.HandleFunc("GET /login", func(rw http.ResponseWriter, req *http.Request) {
-		tmplData, err := client.Get("templates/login.html")
-		if err != nil {
-			panic(err)
-		}
-		tmplRaw, err := io.ReadAll(tmplData)
-		if err != nil {
-			panic(err)
-		}
-		tmpl, err := template.New("").Funcs(templateFuncs).Parse(string(tmplRaw))
-		if err != nil {
-			panic(err)
-		}
-		tmpl.Execute(rw, nil)
+		runTemplate("login", rw, nil)
 	})
 
 	http.HandleFunc("POST /login", func(rw http.ResponseWriter, req *http.Request) {
 		username := req.FormValue("username")
 		password := req.FormValue("password")
 
-		userData, err := client.Get("users/" + username)
+		var u User
+		err := w.db.Get(&u, "SELECT * FROM user WHERE username = $1", username)
 		if err != nil {
 			http.Error(rw, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
-		userRaw, err := io.ReadAll(userData)
-		if err != nil {
-			panic(err)
-		}
-		var u user
-		json.Unmarshal(userRaw, &u)
 		if bcrypt.CompareHashAndPassword(u.Password, []byte(password)) != nil {
 			http.Error(rw, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
 		id := make([]byte, 32)
 		rand.Read(id)
-		sessionMu.Lock()
-		defer sessionMu.Unlock()
-		sessions[string(id)] = &session{
-			username: username,
-			role:     u.Role,
-			ttl:      time.Now().Add(24 * time.Hour),
+		s := Session{
+			ID:     string(id),
+			UserID: u.ID,
 		}
+		w.db.Exec("INSERT INTO session (id, user_id) VALUES ($1, $2)", s.ID, s.UserID)
 		http.SetCookie(rw, &http.Cookie{
 			Name:   "session",
 			Value:  string(id),
@@ -133,27 +162,24 @@ func main() {
 		})
 	})
 
-	http.HandleFunc("/{page}", func(rw http.ResponseWriter, req *http.Request) {
+	getSession := func(req *http.Request) *Session {
 		sidc, _ := req.Cookie("session")
-		var s *session
-		if sidc != nil {
-			s = sessions[sidc.Value]
+		if sidc == nil {
+			return nil
 		}
-		tmplData, err := client.Get("templates/view.html")
+		var s Session
+		err := w.db.Get(&s, "SELECT * FROM session WHERE id = $1", sidc.Value)
 		if err != nil {
-			panic(err)
+			return nil
 		}
-		tmplRaw, err := io.ReadAll(tmplData)
-		if err != nil {
-			panic(err)
-		}
-		tmpl, err := template.New("").Funcs(templateFuncs).Parse(string(tmplRaw))
-		if err != nil {
-			panic(err)
-		}
-		tmpl.Execute(rw, struct {
+		return &s
+	}
+
+	http.HandleFunc("/{page}", func(rw http.ResponseWriter, req *http.Request) {
+		s := getSession(req)
+		runTemplate("view", rw, struct {
 			Page    string
-			Session *session
+			Session *Session
 		}{
 			req.PathValue("page"),
 			s,
@@ -161,29 +187,14 @@ func main() {
 	})
 
 	http.HandleFunc("GET /{page}/edit", func(rw http.ResponseWriter, req *http.Request) {
-		sidc, _ := req.Cookie("session")
-		var s *session
-		if sidc != nil {
-			s = sessions[sidc.Value]
-		} else {
+		s := getSession(req)
+		if s == nil {
 			http.Redirect(rw, req, "/login", http.StatusFound)
 			return
 		}
-		tmplData, err := client.Get("templates/edit.html")
-		if err != nil {
-			panic(err)
-		}
-		tmplRaw, err := io.ReadAll(tmplData)
-		if err != nil {
-			panic(err)
-		}
-		tmpl, err := template.New("").Funcs(templateFuncs).Parse(string(tmplRaw))
-		if err != nil {
-			panic(err)
-		}
-		tmpl.Execute(rw, struct {
+		runTemplate("edit", rw, struct {
 			Page    string
-			Session *session
+			Session *Session
 		}{
 			req.PathValue("page"),
 			s,
@@ -191,25 +202,13 @@ func main() {
 	})
 
 	http.HandleFunc("POST /{page}/edit", func(rw http.ResponseWriter, req *http.Request) {
-		sidc, _ := req.Cookie("session")
-		var s *session
-		if sidc != nil {
-			s = sessions[sidc.Value]
-		}
-		if s != nil {
+		s := getSession(req)
+		if s == nil {
 			http.Redirect(rw, req, "/login", http.StatusFound)
 			return
 		}
-		up, err := client.NewUpload("pages/"+req.PathValue("page"), nil)
-		if err != nil {
-			panic(err)
-		}
 		content := req.FormValue("content")
-		err = up.Write([]byte(content))
-		if err != nil {
-			panic(err)
-		}
-		err = up.Done()
+		_, err := w.db.Exec("INSERT INTO page (slug, content) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET content = $2", req.PathValue("page"), content)
 		if err != nil {
 			panic(err)
 		}
@@ -220,9 +219,9 @@ func main() {
 }
 
 func (w *wiki) WikiLink(href string, text string) string {
-	_, err := w.client.Get("pages/" + href)
+	err := w.db.Get(&Page{}, "SELECT 1 FROM page WHERE slug = $1", href)
 	if err != nil {
-		return `<a href="` + href + `" class="free-link">` + text + `</a>`
+		return `<a href="/` + href + `/edit" class="edit-link">` + text + `</a>`
 	}
-	return `<a href="` + href + `">` + text + `</a>`
+	return `<a href="/` + href + `">` + text + `</a>`
 }

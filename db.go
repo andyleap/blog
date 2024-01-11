@@ -49,7 +49,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	 FROM
 		information_schema.columns
 	 WHERE
-		table_name = '$1'`, name)
+		table_name = $1`, name)
 	if err != nil {
 		return err
 	}

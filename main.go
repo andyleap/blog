@@ -18,8 +18,9 @@ import (
 )
 
 type Page struct {
-	Slug    string `db:"slug" unique:"true"`
-	Content string `db:"content"`
+	Slug        string `db:"slug" unique:"true"`
+	Content     string `db:"content"`
+	ContentType string `db:"content_type"`
 }
 
 type User struct {
@@ -34,8 +35,10 @@ type Session struct {
 }
 
 type Template struct {
-	Name    string `db:"name" unique:"true"`
-	Content string `db:"content"`
+	Name         string `db:"name" unique:"true"`
+	Content      string `db:"content"`
+	ContentType  string `db:"content_type"`
+	TemplateType string `db:"template_type"`
 }
 
 var am = &AutoMigrate{
@@ -117,20 +120,34 @@ func main() {
 		},
 	}
 
-	runTemplate := func(name string, rw http.ResponseWriter, data interface{}) {
+	runTemplate := func(name string, rw http.ResponseWriter, data map[string]interface{}) {
 		var tmpl Template
 		err := w.db.Get(&tmpl, "SELECT * FROM template WHERE name = $1", name)
 		if err != nil {
 			panic(err)
 		}
-		t, err := template.New("").Funcs(templateFuncs).Parse(tmpl.Content)
-		if err != nil {
-			panic(err)
-		}
-		rw.Header().Set("Content-Type", "text/html")
-		err = t.Execute(rw, data)
-		if err != nil {
-			panic(err)
+		rw.Header().Set("Content-Type", tmpl.ContentType)
+		switch tmpl.TemplateType {
+		case "raw":
+			page := data["page"].(string)
+			var p Page
+			err := w.db.Get(&p, "SELECT * FROM page WHERE slug = $1", page)
+			if err != nil {
+				http.Error(rw, "Not found", http.StatusNotFound)
+				return
+			}
+			rw.Write([]byte(p.Content))
+		case "html":
+			fallthrough
+		default:
+			t, err := template.New("").Funcs(templateFuncs).Parse(tmpl.Content)
+			if err != nil {
+				panic(err)
+			}
+			err = t.Execute(rw, data)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
@@ -193,11 +210,13 @@ func main() {
 			panic(err)
 		}
 		err = t.Execute(rw, struct {
-			Page    string
-			Content template.HTML
+			Content      template.HTML
+			ContentType  string
+			TemplateType string
 		}{
-			req.PathValue("name"),
 			template.HTML(tmpl.Content),
+			tmpl.ContentType,
+			tmpl.TemplateType,
 		})
 		if err != nil {
 			panic(err)
@@ -251,12 +270,17 @@ func main() {
 			}
 			tmpl = "edit"
 		}
-		runTemplate(tmpl, rw, struct {
-			Page    string
-			Session *Session
-		}{
-			req.PathValue("page"),
-			s,
+		var contentType string
+		w.db.Get(&contentType, "SELECT content_type FROM page WHERE slug = $1", page)
+		if contentType == "" {
+			contentType = "wiki"
+		}
+		if contentType != "wiki" {
+			tmpl += "-" + contentType
+		}
+		runTemplate(tmpl, rw, map[string]interface{}{
+			"Page":    req.PathValue("page"),
+			"Session": s,
 		})
 	})
 
@@ -267,11 +291,15 @@ var simpleEdit = `
 <!DOCTYPE html>
 <html>
 <head>
-	<title>{{.Page}}</title>
 </head>
 <body>
 	<form method="POST">
-		<textarea name="content" style="width: 100%; height: 100%">{{.Content}}</textarea>
+		<textarea name="content" style="width: 100%; height: 50vh;">{{.Content}}</textarea>
+		<input type="text" name="content_type" value="{{.ContentType}}">
+		<select name="TemplateType">
+			<option value="html"{{if eq .TemplateType "html" ""}} selected{{end}}>Html</option>
+			<option value="raw"{{if eq .TemplateType "raw"}} selected{{end}}>Raw</option>
+		</select>
 		<input type="submit" value="Save">
 	</form>
 </body>

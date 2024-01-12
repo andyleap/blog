@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/andyleap/cajun"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -110,7 +111,7 @@ func main() {
 			var page Page
 			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return fmt.Sprintf("%q not found", path), nil
+				return "", nil
 			}
 			return string(page.Content), nil
 		},
@@ -179,46 +180,6 @@ func main() {
 		return &s
 	}
 
-	http.HandleFunc("/{page}", func(rw http.ResponseWriter, req *http.Request) {
-		s := getSession(req)
-		runTemplate("view", rw, struct {
-			Page    string
-			Session *Session
-		}{
-			req.PathValue("page"),
-			s,
-		})
-	})
-
-	http.HandleFunc("GET /{page}/edit", func(rw http.ResponseWriter, req *http.Request) {
-		s := getSession(req)
-		if s == nil {
-			http.Redirect(rw, req, "/login", http.StatusFound)
-			return
-		}
-		runTemplate("edit", rw, struct {
-			Page    string
-			Session *Session
-		}{
-			req.PathValue("page"),
-			s,
-		})
-	})
-
-	http.HandleFunc("POST /{page}/edit", func(rw http.ResponseWriter, req *http.Request) {
-		s := getSession(req)
-		if s == nil {
-			http.Redirect(rw, req, "/login", http.StatusFound)
-			return
-		}
-		content := req.FormValue("content")
-		_, err := w.db.Exec("INSERT INTO page (slug, content) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET content = $2", req.PathValue("page"), content)
-		if err != nil {
-			panic(err)
-		}
-		http.Redirect(rw, req, "/"+req.PathValue("page"), http.StatusFound)
-	})
-
 	http.HandleFunc("GET /template/edit/{name}", func(rw http.ResponseWriter, req *http.Request) {
 		s := getSession(req)
 		if s == nil {
@@ -255,6 +216,48 @@ func main() {
 			panic(err)
 		}
 		http.Redirect(rw, req, "/template/edit/"+req.PathValue("name"), http.StatusFound)
+	})
+
+	http.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+		s := getSession(req)
+		page := strings.TrimPrefix(req.URL.Path, "/")
+		parts := strings.Split(page, "/")
+		edit := false
+		if len(parts) > 0 {
+			if parts[len(parts)-1] == "edit" {
+				edit = true
+				parts = parts[:len(parts)-1]
+			}
+		}
+		page = strings.Join(parts, "/")
+		if req.Method == "POST" {
+			if s == nil {
+				http.Redirect(rw, req, "/login", http.StatusFound)
+				return
+			}
+			content := req.FormValue("content")
+			_, err := w.db.Exec("INSERT INTO page (slug, content) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET content = $2", page, content)
+			if err != nil {
+				panic(err)
+			}
+			http.Redirect(rw, req, "/"+page, http.StatusFound)
+			return
+		}
+		tmpl := "view"
+		if edit {
+			if s == nil {
+				http.Redirect(rw, req, "/login", http.StatusFound)
+				return
+			}
+			tmpl = "edit"
+		}
+		runTemplate(tmpl, rw, struct {
+			Page    string
+			Session *Session
+		}{
+			req.PathValue("page"),
+			s,
+		})
 	})
 
 	http.ListenAndServe(":8080", nil)

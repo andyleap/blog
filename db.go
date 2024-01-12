@@ -114,7 +114,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			dataType = "text"
 		case reflect.Slice:
 			if field.Type.Elem().Kind() == reflect.Uint8 {
-				dataType = "text"
+				dataType = "bytea"
 				break
 			}
 			fallthrough

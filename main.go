@@ -19,7 +19,7 @@ import (
 
 type Page struct {
 	Slug        string `db:"slug" unique:"true"`
-	Content     string `db:"content"`
+	Content     []byte `db:"content"`
 	ContentType string `db:"content_type"`
 }
 
@@ -107,7 +107,7 @@ func main() {
 			if err != nil {
 				return template.HTML(fmt.Sprintf("%q not found", path)), nil
 			}
-			out, err := c.Transform(page.Content)
+			out, err := c.Transform(string(page.Content))
 			return template.HTML(out), err
 		},
 		"getRaw": func(path string) (string, error) {
@@ -136,7 +136,7 @@ func main() {
 				http.Error(rw, "Not found", http.StatusNotFound)
 				return
 			}
-			rw.Write([]byte(p.Content))
+			rw.Write(p.Content)
 		case "html":
 			fallthrough
 		default:

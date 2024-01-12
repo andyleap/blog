@@ -38,6 +38,7 @@ func (a *AutoMigrate) Migrate(db *sqlx.DB) error {
 type colinfo struct {
 	typ       string
 	rel       string
+	nullable  bool
 	identity  bool
 	unique    bool
 	uniqueCon string
@@ -47,7 +48,8 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	rows, err := db.Query(`SELECT
 		column_name,
 		data_type,
-		is_identity
+		is_identity,
+		is_nullable
 	 FROM
 		information_schema.columns
 	 WHERE
@@ -58,13 +60,14 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 	defer rows.Close()
 	existing := map[string]colinfo{}
 	for rows.Next() {
-		var columnName, dataType, isIdentity string
-		if err := rows.Scan(&columnName, &dataType, &isIdentity); err != nil {
+		var columnName, dataType, isIdentity, isNullable string
+		if err := rows.Scan(&columnName, &dataType, &isIdentity, &isNullable); err != nil {
 			return err
 		}
 		existing[columnName] = colinfo{
 			typ:      dataType,
 			identity: isIdentity == "YES",
+			nullable: isNullable == "YES",
 		}
 	}
 	rows, err = db.Query(`SELECT conname, array_length(conkey, 1), attname
@@ -107,6 +110,7 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			identity: field.Tag.Get("identity") == "true",
 			unique:   field.Tag.Get("unique") == "true",
 		}
+		ci.nullable = field.Tag.Get("nullable") == "true"
 		switch field.Type.Kind() {
 		case reflect.Int:
 			dataType = "integer"
@@ -134,6 +138,9 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 			}
 			if ci.unique {
 				col += " UNIQUE"
+			}
+			if !ci.nullable {
+				col += " NOT NULL"
 			}
 			cols = append(cols, col)
 		}
@@ -172,6 +179,13 @@ func (a *AutoMigrate) migrateTable(db *sqlx.DB, name string, table interface{}) 
 					actions = append(actions, fmt.Sprintf("ADD UNIQUE (\"%s\")", columnName))
 				} else {
 					actions = append(actions, fmt.Sprintf("DROP CONSTRAINT \"%s\"", ci.uniqueCon))
+				}
+			}
+			if e.nullable != ci.nullable {
+				if ci.nullable {
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" DROP NOT NULL", columnName))
+				} else {
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN \"%s\" SET NOT NULL", columnName))
 				}
 			}
 		}

@@ -230,7 +230,9 @@ func main() {
 			return
 		}
 		content := req.FormValue("content")
-		_, err := w.db.Exec("INSERT INTO template (name, content) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET content = $2", req.PathValue("name"), content)
+		contentType := req.FormValue("content_type")
+		templateType := req.FormValue("template_type")
+		_, err := w.db.Exec("INSERT INTO template (name, content. content_type, template_type) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO UPDATE SET content = $2, content_type = $3, template_type = $4", req.PathValue("name"), content, contentType, templateType)
 		if err != nil {
 			panic(err)
 		}
@@ -255,7 +257,8 @@ func main() {
 				return
 			}
 			content := req.FormValue("content")
-			_, err := w.db.Exec("INSERT INTO page (slug, content) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET content = $2", page, content)
+			contentType := req.FormValue("content_type")
+			_, err := w.db.Exec("INSERT INTO page (slug, content, content_type) VALUES ($1, $2, $3) ON CONFLICT (slug) DO UPDATE SET content = $2, content_type = $3", page, content, contentType)
 			if err != nil {
 				panic(err)
 			}
@@ -296,7 +299,7 @@ var simpleEdit = `
 	<form method="POST">
 		<textarea name="content" style="width: 100%; height: 50vh;">{{.Content}}</textarea>
 		<input type="text" name="content_type" value="{{.ContentType}}">
-		<select name="TemplateType">
+		<select name="template_type">
 			<option value="html"{{if eq .TemplateType "html" ""}} selected{{end}}>Html</option>
 			<option value="raw"{{if eq .TemplateType "raw"}} selected{{end}}>Raw</option>
 		</select>

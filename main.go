@@ -308,7 +308,7 @@ func main() {
 			tmpl += "-" + contentType
 		}
 		runTemplate(tmpl, rw, map[string]interface{}{
-			"Page":    req.PathValue("page"),
+			"Page":    page,
 			"Session": s,
 		})
 	})

@@ -116,15 +116,15 @@ func main() {
 		},
 		"getContentTypes": func() []string {
 			var tmpls []Template
-			err := w.db.Select(&tmpls, "SELECT name FROM template")
+			err := w.db.Select(&tmpls, `SELECT "name" FROM "template"`)
 			if err != nil {
 				panic(err)
 			}
 			types := map[string]struct{}{}
 			types["wiki"] = struct{}{}
 			for _, tmpl := range tmpls {
-				if strings.Contains(tmpl.ContentType, "-") {
-					typ := strings.SplitN(tmpl.ContentType, "-", 2)[1]
+				if strings.Contains(tmpl.Name, "-") {
+					typ := strings.SplitN(tmpl.Name, "-", 2)[1]
 					types[typ] = struct{}{}
 				}
 			}

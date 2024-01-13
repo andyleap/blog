@@ -336,9 +336,15 @@ var simpleEdit = `
 `
 
 func (w *wiki) WikiLink(href string, text string) string {
-	err := w.db.Get(&Page{}, "SELECT 1 FROM page WHERE slug = $1", href)
-	if err != nil {
-		return `<a href="/` + href + `/edit" class="edit-link">` + text + `</a>`
+	err := w.db.Get(&Page{}, "SELECT slug FROM page WHERE slug = $1", href)
+	if !strings.HasPrefix(href, "/") {
+		href = "/" + href
 	}
-	return `<a href="/` + href + `">` + text + `</a>`
+	if err != nil {
+		if !strings.HasSuffix(href, "/") {
+			href += "/"
+		}
+		return `<a href="` + href + `edit" class="edit-link">` + text + `</a>`
+	}
+	return `<a href="` + href + `">` + text + `</a>`
 }

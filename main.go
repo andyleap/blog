@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -272,9 +273,18 @@ func main() {
 				http.Redirect(rw, req, "/login", http.StatusFound)
 				return
 			}
-			content := req.FormValue("content")
+			content := []byte(req.FormValue("content"))
 			contentType := req.FormValue("content_type")
-			_, err := w.db.Exec("INSERT INTO page (slug, content, content_type) VALUES ($1, $2, $3) ON CONFLICT (slug) DO UPDATE SET content = $2, content_type = $3", page, content, contentType)
+			f, _, err := req.FormFile("content")
+			if err == nil {
+				defer f.Close()
+				buf, err := io.ReadAll(f)
+				if err != nil {
+					panic(err)
+				}
+				content = buf
+			}
+			_, err = w.db.Exec("INSERT INTO page (slug, content, content_type) VALUES ($1, $2, $3) ON CONFLICT (slug) DO UPDATE SET content = $2, content_type = $3", page, content, contentType)
 			if err != nil {
 				panic(err)
 			}

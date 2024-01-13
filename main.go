@@ -3,11 +3,11 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/andyleap/cajun"
@@ -101,22 +101,38 @@ func main() {
 	c.WikiLink = w
 
 	templateFuncs := template.FuncMap{
-		"render": func(path string) (template.HTML, error) {
-			var page Page
-			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
-			if err != nil {
-				return template.HTML(fmt.Sprintf("%q not found", path)), nil
-			}
-			out, err := c.Transform(string(page.Content))
+		"renderCreole": func(creole []byte) (template.HTML, error) {
+			out, err := c.Transform(string(creole))
 			return template.HTML(out), err
 		},
-		"getRaw": func(path string) (string, error) {
+		"getRaw": func(path string) (*Page, error) {
 			var page Page
 			err := w.db.Get(&page, "SELECT * FROM page WHERE slug = $1", path)
 			if err != nil {
-				return "", nil
+				return nil, nil
 			}
-			return string(page.Content), nil
+			return &page, nil
+		},
+		"getContentTypes": func() []string {
+			var tmpls []Template
+			err := w.db.Select(&tmpls, "SELECT name FROM template")
+			if err != nil {
+				panic(err)
+			}
+			types := map[string]struct{}{}
+			types["wiki"] = struct{}{}
+			for _, tmpl := range tmpls {
+				if strings.Contains(tmpl.ContentType, "-") {
+					typ := strings.SplitN(tmpl.ContentType, "-", 2)[1]
+					types[typ] = struct{}{}
+				}
+			}
+			var out []string
+			for typ := range types {
+				out = append(out, typ)
+			}
+			sort.Strings(out)
+			return out
 		},
 	}
 

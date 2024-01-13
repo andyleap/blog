@@ -248,7 +248,7 @@ func main() {
 		content := req.FormValue("content")
 		contentType := req.FormValue("content_type")
 		templateType := req.FormValue("template_type")
-		_, err := w.db.Exec("INSERT INTO template (name, content. content_type, template_type) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO UPDATE SET content = $2, content_type = $3, template_type = $4", req.PathValue("name"), content, contentType, templateType)
+		_, err := w.db.Exec("INSERT INTO template (name, content, content_type, template_type) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO UPDATE SET content = $2, content_type = $3, template_type = $4", req.PathValue("name"), content, contentType, templateType)
 		if err != nil {
 			panic(err)
 		}

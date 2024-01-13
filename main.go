@@ -146,7 +146,7 @@ func main() {
 		rw.Header().Set("Content-Type", tmpl.ContentType)
 		switch tmpl.TemplateType {
 		case "raw":
-			page := data["page"].(string)
+			page := data["Page"].(string)
 			var p Page
 			err := w.db.Get(&p, "SELECT * FROM page WHERE slug = $1", page)
 			if err != nil {
